@@ -1,0 +1,1 @@
+"""Tools module for the Local Coding Agent."""
