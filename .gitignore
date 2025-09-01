@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.agent/logs/
+.agent/state.json
+.agent/reports/
+.env
+*.pyc
+dist/
+build/
+*.egg-info/
+CODEMAP.md
