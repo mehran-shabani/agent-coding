@@ -56,9 +56,9 @@ def execute_command(
         working_dir = os.getcwd()
     
     working_path = Path(working_dir)
-    if not working_path.exists():
+    if not working_path.is_dir():
         console.print(f"[red]Error:[/red] Working directory '{working_dir}' does not exist")
-        return ShellResult(command, -1, "", f"Working directory does not exist: {working_dir}", 0.0, working_dir)
+        return ShellResult(command, -1, "", f"Working directory is not a directory or does not exist: {working_dir}", 0.0, working_dir)
     
     # Parse command safely
     try:
@@ -66,6 +66,19 @@ def execute_command(
     except ValueError as e:
         console.print(f"[red]Error:[/red] Invalid command syntax: {e}")
         return ShellResult(command, -1, "", str(e), 0.0, working_dir)
+    
+    # Safety gate
+    ok, reason = is_safe_command(command)
+    if not ok:
+        console.print(f"[red]Blocked by safety policy:[/red] {reason}")
+        return ShellResult(
+            command,
+            -1,
+            "",
+            f"Blocked by safety policy: {reason}",
+            0.0,
+            working_dir
+        )
     
     console.print(f"[blue]Executing:[/blue] {command}")
     console.print(f"[dim]Working directory:[/dim] {working_path.absolute()}")
@@ -136,9 +149,9 @@ def log_command(result: ShellResult, log_dir: Path) -> None:
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create log filename with timestamp
-        timestamp = result.timestamp.strftime("%Y%m%d_%H%M%S")
-        log_file = log_dir / f"commands-{timestamp}.jsonl"
+        # Create log filename with daily rotation
+        day = result.timestamp.strftime("%Y%m%d")
+        log_file = log_dir / f"commands-{day}.jsonl"
         
         # Prepare log entry
         log_entry = {
@@ -201,7 +214,7 @@ def is_safe_command(command: str) -> Tuple[bool, str]:
     
     # Whitelist of allowed commands
     ALLOWED_COMMANDS = {
-        'ls', 'cat', 'grep', 'find', 'echo', 'pwd', 'cd', 'head', 'tail',
+        'ls', 'cat', 'grep', 'find', 'echo', 'pwd', 'head', 'tail',
         'git', 'npm', 'pip', 'python', 'python3', 'node', 'make', 'cmake',
         'which', 'whoami', 'id', 'date', 'curl', 'wget', 'tree', 'less',
         'more', 'wc', 'sort', 'uniq', 'awk', 'sed', 'diff', 'patch',
