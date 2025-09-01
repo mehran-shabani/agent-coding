@@ -2,6 +2,7 @@
 
 import difflib
 import re
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -241,6 +242,17 @@ def apply_patch_file(patch_file: Path, base_dir: Path, dry_run: bool = False) ->
         
         full_path = base_dir / file_path
         
+        # Validate path is within base_dir
+        try:
+            full_path = full_path.resolve()
+            base_dir_resolved = base_dir.resolve()
+            if not str(full_path).startswith(str(base_dir_resolved)):
+                results.append(PatchResult(False, f"Path outside base directory: {file_path}"))
+                continue
+        except Exception as e:
+            results.append(PatchResult(False, f"Invalid path: {file_path}"))
+            continue
+        
         if dry_run:
             results.append(PatchResult(True, f"Would apply patch to: {full_path}"))
         else:
@@ -289,7 +301,6 @@ def create_backup(file_path: str, backup_dir: Path) -> Optional[Path]:
         backup_path = backup_dir / backup_name
         
         # Copy file
-        import shutil
         shutil.copy2(source_path, backup_path)
         
         console.print(f"[dim]Backup created: {backup_path}[/dim]")

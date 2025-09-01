@@ -1,6 +1,8 @@
 """Shell command execution for the Local Coding Agent."""
 
+import json
 import os
+import shlex
 import subprocess
 import time
 from datetime import datetime
@@ -58,6 +60,13 @@ def execute_command(
         console.print(f"[red]Error:[/red] Working directory '{working_dir}' does not exist")
         return ShellResult(command, -1, "", f"Working directory does not exist: {working_dir}", 0.0, working_dir)
     
+    # Parse command safely
+    try:
+        cmd_args = shlex.split(command)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] Invalid command syntax: {e}")
+        return ShellResult(command, -1, "", str(e), 0.0, working_dir)
+    
     console.print(f"[blue]Executing:[/blue] {command}")
     console.print(f"[dim]Working directory:[/dim] {working_path.absolute()}")
     
@@ -67,8 +76,8 @@ def execute_command(
         # Execute command
         if capture_output:
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd_args,
+                shell=False,
                 cwd=working_dir,
                 capture_output=True,
                 text=True,
@@ -80,8 +89,8 @@ def execute_command(
         else:
             # For interactive commands or when we want real-time output
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd_args,
+                shell=False,
                 cwd=working_dir,
                 timeout=timeout
             )
@@ -123,37 +132,30 @@ def execute_command(
 
 
 def log_command(result: ShellResult, log_dir: Path) -> None:
-    """Log command execution to file."""
+    """Log command execution to file in JSON format."""
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         
         # Create log filename with timestamp
         timestamp = result.timestamp.strftime("%Y%m%d_%H%M%S")
-        log_file = log_dir / f"commands-{timestamp}.log"
+        log_file = log_dir / f"commands-{timestamp}.jsonl"
         
         # Prepare log entry
-        log_entry = f"""
-=== Command Execution Log ===
-Timestamp: {result.timestamp.isoformat()}
-Command: {result.command}
-Working Directory: {result.working_dir}
-Exit Code: {result.returncode}
-Execution Time: {result.execution_time:.2f}s
-Success: {result.success}
-
-=== STDOUT ===
-{result.stdout}
-
-=== STDERR ===
-{result.stderr}
-
-=== END LOG ENTRY ===
-
-"""
+        log_entry = {
+            "timestamp": result.timestamp.isoformat(),
+            "command": result.command,
+            "working_dir": result.working_dir,
+            "exit_code": result.returncode,
+            "execution_time": result.execution_time,
+            "success": result.success,
+            "stdout": result.stdout,
+            "stderr": result.stderr
+        }
         
         # Append to log file
         with open(log_file, 'a', encoding='utf-8') as f:
-            f.write(log_entry)
+            json.dump(log_entry, f, ensure_ascii=False)
+            f.write('\n')
         
         console.print(f"[dim]Command logged to: {log_file}[/dim]")
         
@@ -167,39 +169,25 @@ def get_command_history(log_dir: Path, limit: int = 10) -> List[Dict]:
         if not log_dir.exists():
             return []
         
-        log_files = sorted(log_dir.glob("commands-*.log"), reverse=True)
+        log_files = sorted(log_dir.glob("commands-*.jsonl"), reverse=True)
         history = []
         
-        for log_file in log_files[:limit]:
+        for log_file in log_files:
             try:
                 with open(log_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                # Parse log entries (simplified parsing)
-                entries = content.split('=== Command Execution Log ===')[1:]
-                for entry in entries:
-                    lines = entry.strip().split('\n')
-                    if len(lines) >= 6:
+                    for line in f:
+                        if len(history) >= limit:
+                            break
                         try:
-                            timestamp = lines[0].replace('Timestamp: ', '')
-                            command = lines[1].replace('Command: ', '')
-                            working_dir = lines[2].replace('Working Directory: ', '')
-                            exit_code = lines[3].replace('Exit Code: ', '')
-                            exec_time = lines[4].replace('Execution Time: ', '')
-                            success = lines[5].replace('Success: ', '') == 'True'
-                            
-                            history.append({
-                                'timestamp': timestamp,
-                                'command': command,
-                                'working_dir': working_dir,
-                                'exit_code': int(exit_code),
-                                'execution_time': exec_time,
-                                'success': success
-                            })
-                        except (ValueError, IndexError):
+                            entry = json.loads(line.strip())
+                            history.append(entry)
+                        except json.JSONDecodeError:
                             continue  # Skip malformed entries
             except Exception:
                 continue  # Skip files that can't be read
+            
+            if len(history) >= limit:
+                break
         
         return history[:limit]
         
@@ -209,41 +197,61 @@ def get_command_history(log_dir: Path, limit: int = 10) -> List[Dict]:
 
 
 def is_safe_command(command: str) -> Tuple[bool, str]:
-    """Check if a command is considered safe to execute."""
+    """Check if a command is considered safe to execute using whitelist approach."""
     
-    # List of potentially dangerous commands
-    dangerous_patterns = [
-        'rm -rf /',
-        'rm -rf *',
-        'dd if=',
-        'mkfs.',
-        'fdisk',
-        'format',
-        'shutdown',
-        'reboot',
-        'halt',
-        'init 0',
-        'init 6',
-        'kill -9 -1',
-        'killall -9',
-        '> /dev/sda',
-        '> /dev/sd',
-        'chmod 777 /',
-        'chown -R root:root /',
-    ]
+    # Whitelist of allowed commands
+    ALLOWED_COMMANDS = {
+        'ls', 'cat', 'grep', 'find', 'echo', 'pwd', 'cd', 'head', 'tail',
+        'git', 'npm', 'pip', 'python', 'python3', 'node', 'make', 'cmake',
+        'which', 'whoami', 'id', 'date', 'curl', 'wget', 'tree', 'less',
+        'more', 'wc', 'sort', 'uniq', 'awk', 'sed', 'diff', 'patch',
+        'tar', 'gzip', 'gunzip', 'zip', 'unzip', 'touch', 'mkdir', 'rm',
+        'cp', 'mv', 'ln', 'chmod', 'chown', 'file', 'stat', 'du', 'df'
+    }
     
-    command_lower = command.lower().strip()
-    
-    for pattern in dangerous_patterns:
-        if pattern in command_lower:
-            return False, f"Command contains potentially dangerous pattern: {pattern}"
-    
-    # Check for suspicious redirections
-    if ' > /dev/' in command_lower or ' >> /dev/' in command_lower:
-        return False, "Command attempts to write to device files"
-    
-    # Check for mass deletions
-    if 'rm' in command_lower and ('*' in command or '-rf' in command_lower):
-        return False, "Command attempts mass file deletion"
-    
-    return True, "Command appears safe"
+    try:
+        cmd_parts = shlex.split(command)
+        if not cmd_parts:
+            return False, "Empty command"
+        
+        base_command = cmd_parts[0].split('/')[-1]  # Get command name
+        
+        if base_command not in ALLOWED_COMMANDS:
+            return False, f"Command '{base_command}' not in allowed list"
+        
+        # Check for command substitution
+        if '$(' in command or '`' in command or '${' in command:
+            return False, "Command substitution not allowed"
+        
+        # Check for dangerous redirections
+        if any(redir in command for redir in [' > /dev/', ' >> /dev/', '> /dev/', '>> /dev/']):
+            return False, "Redirection to device files not allowed"
+        
+        # Check for pipe to dangerous commands
+        if '|' in command:
+            pipe_parts = command.split('|')
+            for part in pipe_parts[1:]:  # Check commands after pipes
+                part = part.strip()
+                if part:
+                    try:
+                        pipe_cmd = shlex.split(part)[0].split('/')[-1]
+                        if pipe_cmd not in ALLOWED_COMMANDS:
+                            return False, f"Piped command '{pipe_cmd}' not in allowed list"
+                    except (IndexError, ValueError):
+                        return False, "Invalid pipe syntax"
+        
+        # Special checks for rm command
+        if base_command == 'rm':
+            if '-rf' in command and ('*' in command or '/' in command):
+                return False, "Dangerous rm command with recursive force and wildcards/root paths"
+        
+        # Check for absolute paths to critical directories
+        critical_paths = ['/', '/dev', '/sys', '/proc', '/etc', '/usr', '/var']
+        for arg in cmd_parts[1:]:
+            if any(arg.startswith(path) for path in critical_paths):
+                return False, f"Access to critical system path not allowed: {arg}"
+        
+        return True, "Command appears safe"
+        
+    except ValueError as e:
+        return False, f"Invalid command syntax: {e}"
