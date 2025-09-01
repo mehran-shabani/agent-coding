@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.python-version
+.venv/
+venv/
+
+# Env
+.env
+
+# Agent
+.agent/
+CODEMAP.md
+
+# OS
+.DS_Store
+Thumbs.db

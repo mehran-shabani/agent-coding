@@ -1,0 +1,31 @@
+[project]
+name = "local-coding-agent"
+version = "0.1.0"
+description = "Local Coding Agent (LCA): a safe local CLI agent powered by GapGPT"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "Local Agent", email = "agent@example.com" }
+]
+dependencies = [
+  "typer>=0.12",
+  "rich>=13",
+  "openai>=1.40.0",
+  "python-dotenv>=1.0",
+  "pydantic>=2.7",
+]
+
+[project.scripts]
+lca = "agent.cli:app"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+"agent" = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agent*"]
+exclude = ["tests*"]
