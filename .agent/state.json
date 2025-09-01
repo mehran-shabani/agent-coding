@@ -1,0 +1,19 @@
+{
+  "todos": [
+    {
+      "id": 1,
+      "text": "Implement user authentication",
+      "status": "done",
+      "created_at": "2025-09-01T06:46:44.566765",
+      "completed_at": "2025-09-01T06:46:44.575610"
+    },
+    {
+      "id": 2,
+      "text": "Write unit tests",
+      "status": "pending",
+      "created_at": "2025-09-01T06:46:44.566765"
+    }
+  ],
+  "next_todo_id": 3,
+  "last_updated": "2025-09-01T06:46:44.575614"
+}
